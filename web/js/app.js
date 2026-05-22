@@ -158,6 +158,7 @@ const routes = {
     'login':       { render: renderLogin,      auth: false },
     'register':    { render: renderRegister,   auth: false },
     'dashboard':   { render: renderDashboard,  auth: true  },
+    'ctrl':        { render: renderCtrl,       auth: true, admin: true },
     'admin-users': { render: renderAdminUsers, auth: true, admin: true },
     'admin-apps':  { render: renderAdminApps,  auth: true, admin: true },
 };
@@ -215,6 +216,7 @@ function renderHeader() {
     if (currentUser) {
         links.push(`<a href="#/dashboard" class="${currentPage==='dashboard'?'active':''}">首页</a>`);
         if (currentUser.role === 'admin') {
+            links.push(`<a href="#/ctrl" class="${currentPage==='ctrl'?'active':''}">页面管理</a>`);
             links.push(`<a href="#/admin-users" class="${currentPage==='admin-users'?'active':''}">用户管理</a>`);
             links.push(`<a href="#/admin-apps" class="${currentPage==='admin-apps'?'active':''}">应用管理</a>`);
         }
@@ -239,6 +241,7 @@ function renderHeader() {
         drawerHtml += `<div style="font-weight:600;margin-bottom:16px;">${escHtml(currentUser.username)}</div>`;
         drawerHtml += `<a href="#/dashboard" onclick="closeDrawer()" class="${currentPage==='dashboard'?'active':''}">首页</a>`;
         if (currentUser.role === 'admin') {
+            drawerHtml += `<a href="#/ctrl" onclick="closeDrawer()" class="${currentPage==='ctrl'?'active':''}">页面管理</a>`;
             drawerHtml += `<a href="#/admin-users" onclick="closeDrawer()" class="${currentPage==='admin-users'?'active':''}">用户管理</a>`;
             drawerHtml += `<a href="#/admin-apps" onclick="closeDrawer()" class="${currentPage==='admin-apps'?'active':''}">应用管理</a>`;
         }
@@ -605,6 +608,179 @@ async function handleDeleteApp(id) {
         closeModal();
         showToast('应用已删除', 'success');
         renderAdminApps();
+    } catch (err) {
+        showToast(err.msg || '删除失败', 'error');
+    }
+}
+
+// ---------- 管理员: 页面管理 (Ctrl) ----------
+async function renderCtrl() {
+    $main.className = '';
+    $main.innerHTML = `
+    <div class="card">
+        <div class="card-header">
+            <h2>页面管理</h2>
+            <button class="btn btn-primary btn-sm" onclick="createPageModal()">+ 新建页面</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>路径</th>
+                        <th>内容预览</th>
+                        <th>更新时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="pages-tbody">
+                    <tr><td colspan="5"><div class="empty"><p>加载中...</p></div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>`;
+
+    try {
+        const data = await apiGet('/api/pages?page_size=100');
+        const items = data.data && data.data.items ? data.data.items : [];
+        if (items.length === 0) {
+            document.getElementById('pages-tbody').innerHTML =
+                '<tr><td colspan="5"><div class="empty"><p>暂无页面，点击上方按钮新建</p></div></td></tr>';
+            return;
+        }
+        document.getElementById('pages-tbody').innerHTML = items.map(p => {
+            const preview = stripHtml(p.html_content || '').substring(0, 80) + ((p.html_content && p.html_content.length > 80) ? '...' : '');
+            return `
+            <tr>
+                <td data-label="ID">${escHtml(String(p.id))}</td>
+                <td data-label="路径"><code style="font-size:13px;">/${escHtml(p.url_path)}</code></td>
+                <td data-label="内容预览" style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(preview) || '<span style="color:var(--c-text-sub)">(空)</span>'}</td>
+                <td data-label="更新时间">${formatTime(p.updated_at || '')}</td>
+                <td data-label="操作" class="actions">
+                    <a href="/${escAttr(p.url_path)}" target="_blank" class="btn btn-outline btn-sm" title="预览">预览</a>
+                    <button class="btn btn-outline btn-sm" onclick="editPageModal('${escJs(String(p.id))}','${escJs(p.url_path)}','${escJs(p.html_content||'')}')">编辑</button>
+                    <button class="btn btn-danger btn-sm" onclick="deletePage('${escJs(String(p.id))}','${escJs(p.url_path)}')">删除</button>
+                </td>
+            </tr>`;
+        }).join('');
+    } catch (err) {
+        document.getElementById('pages-tbody').innerHTML =
+            `<tr><td colspan="5"><div class="empty"><p>加载失败：${escHtml(err.msg || '未知错误')}</p></div></td></tr>`;
+    }
+}
+
+function stripHtml(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html;
+    return tmp.textContent || '';
+}
+
+function createPageModal() {
+    showModal(`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal" style="max-width:640px;">
+            <h3>新建页面</h3>
+            <form onsubmit="handleCreatePage(event)">
+                <div class="form-group">
+                    <label>页面路径</label>
+                    <input name="url_path" placeholder="例如：about、docs/getting-started" required>
+                    <div class="hint">无需前导 / 和 .html，系统自动匹配</div>
+                </div>
+                <div class="form-group">
+                    <label>HTML 内容</label>
+                    <textarea name="html_content" rows="10" placeholder="输入 HTML 内容..."></textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>`);
+}
+
+async function handleCreatePage(e) {
+    e.preventDefault();
+    const form = e.target;
+    const urlPath = form.url_path.value.trim();
+    const htmlContent = form.html_content.value;
+    if (!urlPath) {
+        showToast('请输入页面路径', 'error');
+        return;
+    }
+    try {
+        await apiPost('/api/pages', { url_path: urlPath, html_content: htmlContent });
+        closeModal();
+        showToast('页面创建成功', 'success');
+        renderCtrl();
+    } catch (err) {
+        showToast(err.msg || '创建失败', 'error');
+    }
+}
+
+function editPageModal(id, urlPath, htmlContent) {
+    showModal(`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal" style="max-width:640px;">
+            <h3>编辑页面</h3>
+            <form onsubmit="handleEditPage(event,'${escJs(id)}')">
+                <div class="form-group">
+                    <label>页面路径</label>
+                    <input name="url_path" value="${escAttr(urlPath)}" required>
+                </div>
+                <div class="form-group">
+                    <label>HTML 内容</label>
+                    <textarea name="html_content" rows="12">${escHtml(htmlContent)}</textarea>
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-outline" onclick="closeModal()">取消</button>
+                    <button type="submit" class="btn btn-primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>`);
+}
+
+async function handleEditPage(e, id) {
+    e.preventDefault();
+    const form = e.target;
+    const urlPath = form.url_path.value.trim();
+    const htmlContent = form.html_content.value;
+    if (!urlPath) {
+        showToast('请输入页面路径', 'error');
+        return;
+    }
+    try {
+        await apiPut('/api/pages/' + id, { url_path: urlPath, html_content: htmlContent });
+        closeModal();
+        showToast('页面更新成功', 'success');
+        renderCtrl();
+    } catch (err) {
+        showToast(err.msg || '更新失败', 'error');
+    }
+}
+
+function deletePage(id, urlPath) {
+    showModal(`
+    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+        <div class="modal">
+            <h3>确认删除</h3>
+            <p style="margin-bottom:8px;">确定要删除页面 <strong>/${escHtml(urlPath)}</strong> 吗？</p>
+            <p style="font-size:13px;color:var(--c-text-sub);">此操作不可撤销。</p>
+            <div class="modal-actions">
+                <button class="btn btn-outline" onclick="closeModal()">取消</button>
+                <button class="btn btn-danger" onclick="handleDeletePage('${escJs(id)}')">确认删除</button>
+            </div>
+        </div>
+    </div>`);
+}
+
+async function handleDeletePage(id) {
+    try {
+        await apiDel('/api/pages/' + id);
+        closeModal();
+        showToast('页面已删除', 'success');
+        renderCtrl();
     } catch (err) {
         showToast(err.msg || '删除失败', 'error');
     }

@@ -1,7 +1,6 @@
 package object
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/glebarez/sqlite"
@@ -13,10 +12,13 @@ var Database *gorm.DB
 func init() {
 	os.MkdirAll("data", 0755)
 	var err error
-	Database, err = gorm.Open(sqlite.Open("data/service_temp.db"), &gorm.Config{})
+	Database, err = gorm.Open(sqlite.Open("data/pages.db"), &gorm.Config{})
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println(Database)
+	// 自动迁移
+	if err := Database.AutoMigrate(&Page{}); err != nil {
+		panic(err)
+	}
 }
