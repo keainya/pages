@@ -28,7 +28,13 @@ function escAttr(s) {
                     .replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 function escJs(s) {
-    return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return String(s)
+        .replace(/\\/g, '\\\\')   // \ → \\ (must be first!)
+        .replace(/'/g, "\\'")     // ' → \'
+        .replace(/\n/g, '\\n')    // 换行 → \n
+        .replace(/\r/g, '\\r')    // 回车 → \r
+        .replace(/\t/g, '\\t')    // 制表 → \t
+        .replace(/"/g, '&quot;'); // " → &quot; (HTML 属性分隔符安全)
 }
 
 // ---------- 工具函数 ----------
