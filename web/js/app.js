@@ -409,7 +409,7 @@ function stripHtml(html) {
 
 function createPageModal() {
     showModal(`
-    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal-overlay" onmousedown="if(event.target===this)closeModal()">
         <div class="modal" style="max-width:640px;">
             <h3>新建页面</h3>
             <form onsubmit="handleCreatePage(event)">
@@ -452,7 +452,7 @@ async function handleCreatePage(e) {
 
 function editPageModal(id, urlPath, htmlContent) {
     showModal(`
-    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal-overlay" onmousedown="if(event.target===this)closeModal()">
         <div class="modal" style="max-width:640px;">
             <h3>编辑页面</h3>
             <form onsubmit="handleEditPage(event,'${escJs(id)}')">
@@ -494,7 +494,7 @@ async function handleEditPage(e, id) {
 
 function deletePage(id, urlPath) {
     showModal(`
-    <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+    <div class="modal-overlay" onmousedown="if(event.target===this)closeModal()">
         <div class="modal">
             <h3>确认删除</h3>
             <p style="margin-bottom:8px;">确定要删除页面 <strong>/${escHtml(urlPath)}</strong> 吗？</p>
